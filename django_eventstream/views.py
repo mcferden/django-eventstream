@@ -46,21 +46,28 @@ class RedisListener(object):
         self.pubsub = self.redis_client.pubsub()
 
     async def listen(self):
+        import redis
+
         await self.pubsub.subscribe("events_channel")
-        async for message in self.pubsub.listen():
-            if message["type"] == "message":
-                event_data = json.loads(message["data"])
-                channel = event_data["channel"]
-                event_type = event_data["event_type"]
-                data = event_data["data"]
-                pub_id = event_data["pub_id"]
+        while True:
+            try:
+                async for message in self.pubsub.listen():
+                    if message["type"] == "message":
+                        event_data = json.loads(message["data"])
+                        channel = event_data["channel"]
+                        event_type = event_data["event_type"]
+                        data = event_data["data"]
+                        pub_id = event_data["pub_id"]
 
-                from .event import Event
+                        from .event import Event
 
-                e = Event(channel, event_type, data, id=pub_id)
+                        e = Event(channel, event_type, data, id=pub_id)
 
-                # Notify local listeners
-                get_listener_manager().add_to_queues(channel, e)
+                        # Notify local listeners
+                        get_listener_manager().add_to_queues(channel, e)
+            except redis.ConnectionError as e:
+                logger.warning('Redis connection error: %s', e)
+                await asyncio.sleep(1)
 
     async def start(self):
         await self.listen()
